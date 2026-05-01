@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Image Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root[data-theme="dark"] {
+  --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+  --border: #30363d; --text: #e6edf3; --text2: #8b949e;
+  --accent: #58a6ff; --accent2: #1f6feb; --user-bubble: #1f6feb;
+  --ai-bubble: #21262d; --shadow: rgba(0,0,0,0.4);
+  --badge-ai: #f85149; --badge-real: #3fb950;
+}
+:root[data-theme="light"] {
+  --bg: #f6f8fa; --surface: #ffffff; --surface2: #f0f2f5;
+  --border: #d0d7de; --text: #1f2328; --text2: #656d76;
+  --accent: #0969da; --accent2: #0550ae; --user-bubble: #0969da;
+  --ai-bubble: #f0f2f5; --shadow: rgba(0,0,0,0.1);
+  --badge-ai: #cf222e; --badge-real: #1a7f37;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; transition:background .3s,color .3s; }
+
+/* Sidebar */
+.sidebar {
+  width:280px; background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; padding:20px; flex-shrink:0;
+}
+.logo { display:flex; align-items:center; gap:10px; margin-bottom:28px; }
+.logo-icon { width:36px; height:36px; background:linear-gradient(135deg,#58a6ff,#bc8cff); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; }
+.logo-text { font-size:15px; font-weight:700; letter-spacing:-.3px; }
+.logo-sub { font-size:11px; color:var(--text2); font-weight:400; }
+
+.sidebar-section { margin-bottom:20px; }
+.sidebar-label { font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:.8px; margin-bottom:8px; }
+
+/* Detection result card */
+.result-card {
+  background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:14px; display:none;
+}
+.result-badge {
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:20px;
+  font-size:12px; font-weight:600; margin-bottom:10px;
+}
+.result-badge.ai { background:rgba(248,81,73,.15); color:var(--badge-ai); }
+.result-badge.real { background:rgba(63,185,80,.15); color:var(--badge-real); }
+.result-conf { font-size:13px; color:var(--text2); margin-bottom:10px; }
+.prob-bar-wrap { margin-bottom:6px; }
+.prob-label { display:flex; justify-content:space-between; font-size:11px; color:var(--text2); margin-bottom:3px; }
+.prob-bar { height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.prob-fill { height:100%; border-radius:2px; transition:width .6s ease; }
+.prob-fill.fake { background:var(--badge-ai); }
+.prob-fill.real { background:var(--badge-real); }
+
+.result-img { width:100%; border-radius:8px; margin-top:10px; max-height:140px; object-fit:cover; display:none; }
+
+.btn-reset {
+  width:100%; margin-top:auto; padding:10px; border:1px solid var(--border);
+  background:transparent; color:var(--text2); border-radius:10px; cursor:pointer;
+  font-family:'Inter',sans-serif; font-size:13px; font-weight:500; transition:all .2s;
+}
+.btn-reset:hover { background:var(--surface2); color:var(--text); }
+
+.theme-toggle {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 12px; background:var(--surface2); border-radius:10px;
+  cursor:pointer; border:1px solid var(--border); margin-bottom:16px;
+  font-size:13px; color:var(--text2);
+}
+.toggle-switch { width:36px; height:20px; background:var(--border); border-radius:10px; position:relative; transition:background .3s; }
+.toggle-switch.on { background:var(--accent); }
+.toggle-knob { width:14px; height:14px; background:#fff; border-radius:50%; position:absolute; top:3px; left:3px; transition:transform .3s; }
+.toggle-switch.on .toggle-knob { transform:translateX(16px); }
+
+/* Main chat */
+.main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.chat-header {
+  padding:16px 24px; border-bottom:1px solid var(--border); background:var(--surface);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.chat-title { font-size:15px; font-weight:600; }
+.chat-status { font-size:12px; color:var(--text2); }
+.status-dot { display:inline-block; width:7px; height:7px; background:#3fb950; border-radius:50%; margin-right:5px; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.messages { flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:16px; }
+.messages::-webkit-scrollbar { width:4px; }
+.messages::-webkit-scrollbar-track { background:transparent; }
+.messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+/* Message bubbles */
+.msg { display:flex; gap:10px; max-width:75%; animation:fadeUp .3s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.msg.user { margin-left:auto; flex-direction:row-reverse; }
+.msg-avatar {
+  width:32px; height:32px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:14px;
+}
+.msg.user .msg-avatar { background:var(--user-bubble); }
+.msg.ai .msg-avatar { background:var(--surface2); border:1px solid var(--border); }
+.msg-body { display:flex; flex-direction:column; gap:4px; }
+.msg.user .msg-body { align-items:flex-end; }
+.bubble {
+  padding:10px 14px; border-radius:16px; font-size:14px; line-height:1.6;
+  max-width:100%; word-break:break-word;
+}
+.msg.user .bubble { background:var(--user-bubble); color:#fff; border-bottom-right-radius:4px; }
+.msg.ai .bubble { background:var(--ai-bubble); border:1px solid var(--border); border-bottom-left-radius:4px; }
+.msg-img { max-width:240px; border-radius:10px; margin-bottom:4px; }
+.msg-time { font-size:11px; color:var(--text2); }
+.typing-dot { display:inline-block; width:6px; height:6px; background:var(--text2); border-radius:50%; margin:0 2px; animation:bounce .8s infinite; }
+.typing-dot:nth-child(2){animation-delay:.15s}.typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+
+/* Welcome */
+.welcome { text-align:center; padding:40px 20px; color:var(--text2); }
+.welcome-icon { font-size:48px; margin-bottom:16px; }
+.welcome h2 { font-size:20px; color:var(--text); font-weight:600; margin-bottom:8px; }
+.welcome p { font-size:14px; line-height:1.6; }
+
+/* Input area */
+.input-area {
+  padding:16px 24px; border-top:1px solid var(--border); background:var(--surface);
+}
+.upload-preview { position:relative; display:inline-block; margin-bottom:10px; }
+.upload-preview img { max-height:80px; border-radius:8px; border:2px solid var(--accent); }
+.upload-preview .remove-img {
+  position:absolute; top:-8px; right:-8px; width:20px; height:20px;
+  background:#f85149; color:#fff; border-radius:50%; border:none;
+  cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center;
+}
+.input-row { display:flex; gap:10px; align-items:flex-end; }
+.input-box {
+  flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+  padding:12px 14px; color:var(--text); font-family:'Inter',sans-serif; font-size:14px;
+  resize:none; min-height:44px; max-height:120px; outline:none; transition:border .2s;
+}
+.input-box:focus { border-color:var(--accent); }
+.input-box::placeholder { color:var(--text2); }
+.btn-attach, .btn-send {
+  width:44px; height:44px; border-radius:12px; border:none; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:18px; transition:all .2s;
+}
+.btn-attach { background:var(--surface2); border:1px solid var(--border); color:var(--text2); }
+.btn-attach:hover { border-color:var(--accent); color:var(--accent); }
+.btn-send { background:var(--accent); color:#fff; }
+.btn-send:hover { background:var(--accent2); transform:scale(1.05); }
+.btn-send:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+
+/* Drop zone */
+.drop-overlay {
+  position:fixed; inset:0; background:rgba(88,166,255,.1); border:3px dashed var(--accent);
+  display:none; align-items:center; justify-content:center; z-index:100; pointer-events:none;
+  font-size:20px; font-weight:600; color:var(--accent);
+}
+.drop-overlay.active { display:flex; }
+
+/* Model warning banner */
+.banner {
+  margin:12px 24px; padding:12px 16px; background:rgba(248,81,73,.12);
+  border:1px solid rgba(248,81,73,.3); border-radius:10px;
+  font-size:13px; color:#f85149; display:none;
+}
+</style>
+</head>
+<body>
+
+<!-- Drag overlay -->
+<div class="drop-overlay" id="dropOverlay">📸 Drop image to analyze</div>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🔍</div>
+    <div>
+      <div class="logo-text">AI Detector</div>
+      <div class="logo-sub">Image Analysis Chatbot</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Appearance</div>
+    <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()">
+      <span id="themeLabel">🌙 Dark Mode</span>
+      <div class="toggle-switch on" id="toggleSwitch"><div class="toggle-knob"></div></div>
+    </div>
+  </div>
+
+  <div class="sidebar-section" id="resultSection">
+    <div class="sidebar-label">Detection Result</div>
+    <div class="result-card" id="resultCard">
+      <div class="result-badge" id="resultBadge"></div>
+      <div class="result-conf" id="resultConf"></div>
+      <div class="prob-bar-wrap">
+        <div class="prob-label"><span>🤖 AI Generated</span><span id="fakeVal">0%</span></div>
+        <div class="prob-bar"><div class="prob-fill fake" id="fakeBar" style="width:0%"></div></div>
+      </div>
+      <div class="prob-bar-wrap">
+        <div class="prob-label"><span>📷 Real Photo</span><span id="realVal">0%</span></div>
+        <div class="prob-bar"><div class="prob-fill real" id="realBar" style="width:0%"></div></div>
+      </div>
+      <img class="result-img" id="resultImg" src="" alt="Analyzed image">
+    </div>
+  </div>
+
+  <button class="btn-reset" onclick="resetChat()">🗑️ New Conversation</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="chat-header">
+    <div>
+      <div class="chat-title">Image Analysis Chat</div>
+      <div class="chat-status"><span class="status-dot"></span><span id="statusText">Ready</span></div>
+    </div>
+  </div>
+
+  <div class="banner" id="warningBanner"></div>
+
+  <div class="messages" id="messages">
+    <div class="welcome" id="welcome">
+      <div class="welcome-icon">🤖</div>
+      <h2>Welcome to AI Image Detector</h2>
+      <p>Upload an image and I'll analyze whether it's AI-generated or a real photo.<br>
+      Then we can chat about it — ask me anything!</p>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="upload-preview" id="uploadPreview" style="display:none">
+      <img id="previewImg" src="" alt="preview">
+      <button class="remove-img" onclick="removePreview()">✕</button>
+    </div>
+    <div class="input-row">
+      <button class="btn-attach" onclick="document.getElementById('fileInput').click()" title="Attach image">📎</button>
+      <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFile(this.files[0])">
+      <textarea class="input-box" id="msgInput" placeholder="Upload an image or ask a question…" rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="btn-send" id="sendBtn" onclick="sendMessage()">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let pendingFile = null;
+let pendingImageUrl = null;
+let pendingImagePath = null;
+let lastDetection = null;
+let isLoading = false;
+
+// ── Theme ──────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeLabel').textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+  document.getElementById('toggleSwitch').classList.toggle('on', !isDark);
+}
+
+// ── File Handling ──────────────────────────────────────────────────────────
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  pendingFile = file;
+  const url = URL.createObjectURL(file);
+  pendingImageUrl = url;
+  document.getElementById('previewImg').src = url;
+  document.getElementById('uploadPreview').style.display = 'inline-block';
+  document.getElementById('msgInput').placeholder = 'Add a message or just send to analyze…';
+}
+
+function removePreview() {
+  pendingFile = null; pendingImageUrl = null;
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('msgInput').placeholder = 'Upload an image or ask a question…';
+}
+
+// Drag and drop
+document.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('dropOverlay').classList.add('active'); });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.getElementById('dropOverlay').classList.remove('active'); });
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('dropOverlay').classList.remove('active');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) handleFile(file);
+});
+
+// ── Messages ───────────────────────────────────────────────────────────────
+function addMessage(role, text, imgUrl) {
+  document.getElementById('welcome').style.display = 'none';
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const avatar = role === 'user' ? '👤' : '🤖';
+  const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  div.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-body">
+      ${imgUrl ? `<img class="msg-img" src="${imgUrl}" alt="uploaded">` : ''}
+      <div class="bubble">${text}</div>
+      <div class="msg-time">${time}</div>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function addTyping() {
+  document.getElementById('welcome').style.display = 'none';
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ai'; div.id = 'typing';
+  div.innerHTML = `<div class="msg-avatar">🤖</div><div class="msg-body"><div class="bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTyping() { document.getElementById('typing')?.remove(); }
+
+// ── Upload & Detect ────────────────────────────────────────────────────────
+async function uploadAndDetect(file) {
+  setStatus('Analyzing image…', true);
+  const fd = new FormData();
+  fd.append('image', file);
+  const res = await fetch('/api/upload', { method:'POST', body:fd });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error || 'Upload failed');
+  return data;
+}
+
+function showResult(detection, imgUrl) {
+  const card = document.getElementById('resultCard');
+  const badge = document.getElementById('resultBadge');
+  const isAI = detection.label === 'AI Generated';
+  card.style.display = 'block';
+  badge.textContent = isAI ? '🤖 AI Generated' : '📷 Real Photo';
+  badge.className = `result-badge ${isAI ? 'ai' : 'real'}`;
+  document.getElementById('resultConf').textContent = `Confidence: ${detection.confidence}%`;
+  document.getElementById('fakeVal').textContent = `${detection.fake_prob}%`;
+  document.getElementById('realVal').textContent = `${detection.real_prob}%`;
+  document.getElementById('realVal').textContent = `${detection.real_prob}%`;
+  document.getElementById('fakeBar').style.width = `${detection.fake_prob}%`;
+  document.getElementById('realBar').style.width = `${detection.real_prob}%`;
+  const img = document.getElementById('resultImg');
+  img.src = imgUrl; img.style.display = 'block';
+}
+
+function setStatus(text, busy) {
+  document.getElementById('statusText').textContent = text;
+  document.getElementById('sendBtn').disabled = busy;
+  isLoading = busy;
+}
+
+// ── Send ────────────────────────────────────────────────────────────────────
+async function sendMessage() {
+  if (isLoading) return;
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!pendingFile && !text) return;
+
+  const userText = text || '📸 Analyze this image for me.';
+  addMessage('user', userText, pendingImageUrl);
+  input.value = ''; autoResize(input);
+
+  try {
+    if (pendingFile) {
+      // Step 1: upload + detect
+      const uploadData = await uploadAndDetect(pendingFile);
+      lastDetection = uploadData.result;
+      pendingImagePath = uploadData.image_path;
+      showResult(uploadData.result, uploadData.image_url);
+      removePreview();
+
+      // Step 2: chat with context
+      addTyping();
+      setStatus('Thinking…', true);
+      const chatRes = await fetch('/api/chat', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          message: userText,
+          detection_result: lastDetection,
+          image_path: pendingImagePath,
+        })
+      });
+      const chatData = await chatRes.json();
+      removeTyping();
+      addMessage('ai', formatReply(chatData.reply || chatData.error));
+    } else {
+      // Follow-up question
+      addTyping();
+      setStatus('Thinking…', true);
+      const res = await fetch('/api/chat', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json();
+      removeTyping();
+      addMessage('ai', formatReply(data.reply || data.error));
+    }
+  } catch(e) {
+    removeTyping();
+    addMessage('ai', `⚠️ Error: ${e.message}`);
+  }
+
+  setStatus('Ready', false);
+}
+
+async function resetChat() {
+  await fetch('/api/reset', { method:'POST' });
+  document.getElementById('messages').innerHTML = '<div class="welcome" id="welcome"><div class="welcome-icon">🤖</div><h2>Welcome to AI Image Detector</h2><p>Upload an image and I\'ll analyze whether it\'s AI-generated or a real photo.<br>Then we can chat about it — ask me anything!</p></div>';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('resultImg').style.display = 'none';
+  lastDetection = null; pendingImagePath = null;
+  removePreview();
+}
+
+function formatReply(text) {
+  if (!text) return 'No response received.';
+  return text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+}
+
+function handleKey(e) { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+
+// ── Status check on load ────────────────────────────────────────────────────
+window.onload = async () => {
+  const res = await fetch('/api/status');
+  const data = await res.json();
+  if (!data.model_loaded) {
+    const b = document.getElementById('warningBanner');
+    b.style.display = 'block';
+    b.textContent = '⚠️ Model not trained yet. Run: python src/train.py — then restart the app.';
+  }
+};
+</script>
+</body>
+</html>
