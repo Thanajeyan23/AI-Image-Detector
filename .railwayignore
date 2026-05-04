@@ -1,0 +1,12 @@
+# Don't upload these to Railway build
+venv/
+.git/
+data/
+__pycache__/
+*.pyc
+uploads/
+python-3.11.exe
+testingollama.py
+check_data.py
+src/train.py
+src/dataset.py

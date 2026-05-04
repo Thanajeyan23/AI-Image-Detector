@@ -1,6 +1,6 @@
 import os
 import uuid
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from PIL import Image
 import sys
@@ -8,7 +8,6 @@ import sys
 # Allow imports from src/
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.predict import load_model, predict
-from src.chat import ChatSession
 
 # ─── Flask App Setup ──────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -41,23 +40,8 @@ else:
     print("[X] No trained model found at models/detector.pth")
     print("  -> Run 'python src/train.py' first to train the model.")
 
-# In-memory store for chat sessions (one per browser session)
-# In production you'd use a database, but for local use this is fine
-chat_sessions: dict[str, ChatSession] = {}
-
-
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTS
-
-
-def get_chat_session() -> ChatSession:
-    """Get or create a ChatSession for the current browser session."""
-    sid = session.get('session_id')
-    if sid not in chat_sessions:
-        sid = str(uuid.uuid4())
-        session['session_id']  = sid
-        chat_sessions[sid]     = ChatSession()
-    return chat_sessions[sid]
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -108,9 +92,7 @@ def upload_image():
     except Exception as e:
         return jsonify({'error': f'Detection failed: {str(e)}'}), 500
 
-    # Store image path in the chat session
-    chat = get_chat_session()
-    chat.current_image_path = image_path
+    # (Chat is disabled in this deployment — detector only)
 
     # Return result + a URL to display the image in the UI
     return jsonify({
@@ -123,62 +105,31 @@ def upload_image():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """
-    Send a message to the chatbot.
-    If an image was just uploaded, analyze it.
-    If it's a follow-up, continue the conversation.
-    """
-    data    = request.get_json()
-    message = data.get('message', '').strip()
-
-    if not message:
-        return jsonify({'error': 'Empty message'}), 400
-
-    chat_obj = get_chat_session()
-
-    # Check if this is the first message about a new image
-    detection_result = data.get('detection_result')  # Sent from frontend
-    image_path       = data.get('image_path')
-
-    try:
-        if detection_result and image_path and os.path.exists(image_path):
-            # New image analysis — reset session context and analyze
-            chat_obj.reset()
-            reply = chat_obj.analyze_image(image_path, detection_result, message)
-        else:
-            # Follow-up message — continue existing conversation
-            if chat_obj.message_count == 0:
-                reply = "Please upload an image first so I can analyze it for you! 📸"
-            else:
-                reply = chat_obj.chat(message)
-
-        return jsonify({'reply': reply})
-
-    except Exception as e:
-        return jsonify({'error': f'Chat error: {str(e)}'}), 500
+    """Chat is disabled in this deployment (detector-only mode)."""
+    return jsonify({
+        'reply': '🤖 Chat is disabled in this demo deployment. Upload an image above to get the AI vs Real detection result!'
+    })
 
 
 @app.route('/api/reset', methods=['POST'])
 def reset_chat():
-    """Clear the current conversation to start fresh."""
-    chat_obj = get_chat_session()
-    chat_obj.reset()
+    """No-op in detector-only mode."""
     return jsonify({'success': True, 'message': 'Conversation cleared!'})
 
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     """Serve uploaded images."""
-    from flask import send_from_directory
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))  # Railway sets PORT automatically
     print("\n" + "="*50)
-    print("  AI Image Detector Chatbot")
+    print("  AI Image Detector — Detector Mode")
     print("="*50)
-    print(f"  Open in browser: http://localhost:5000")
+    print(f"  Open in browser: http://localhost:{port}")
     print(f"  Model status:    {'[OK] Ready' if model_loaded else '[X] Not trained yet'}")
     print("="*50 + "\n")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=port)
